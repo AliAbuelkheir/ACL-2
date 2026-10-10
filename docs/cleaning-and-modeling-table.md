@@ -27,10 +27,10 @@ What we decided and what the notebook fixes. Code: `notebooks/01-cleaning-and-mo
 **Features**
 
 - Constructors: use past performance, not identity. History follows `constructorId`, so a renamed team starts empty.
-- Start position: keep both `grid` and `grid_pct`. Compare them by ablation later.
-- Qualifying: `has_quali` is set per race, and is 0 only when the race has no qualifying data at all.
-- Qualifying: use `grid_penalty` (grid minus qualifying position) instead of the qualifying position. It is 0 when there is no qualifying position.
-- Circuits: keep `circuitId`, and add `circuit_grid_podium_rate`.
+- Start position: keep both `grid_position` and `grid_position_relative`. Compare them by ablation later.
+- Qualifying: `has_qualifying_data` is set per race, and is 0 only when the race has no qualifying data at all.
+- Qualifying: use `grid_penalty_places` (grid minus qualifying position) instead of the qualifying position. It is 0 when there is no qualifying position.
+- Circuits: keep `circuitId`, and add `circuit_podium_rate_for_grid_group`.
 - Form windows: last 5 races for podium rate and average finish, last 10 for retirement rates. Starting values, to compare later.
 - Standings: use the previous round of the same season. Points are divided by the leader's points.
 - Standings: no row means 0 points and 0 wins. The position stays missing. At round 1 everyone has 0.
@@ -68,10 +68,10 @@ What we decided and what the notebook fixes. Code: `notebooks/01-cleaning-and-mo
 | 19 | No standings row | 2,889 driver rows, 1,593 of them round 1 | 0 points and 0 wins. Position stays missing. |
 | 20 | No constructors' championship before 1958 | 77% of 1950s rows | Constructor standings stay missing. |
 | 21 | Nationality (`British`) and country (`UK`) do not match; `USA` and `United States` both used | 43 nationalities | Mapping dict; merge the two USA names. |
-| 22 | No qualifying data for many races | 620 of 1,114 races | `has_quali` = 0. |
-| 23 | Race has qualifying data but a driver has no row | 21 rows | `grid_penalty` = 0. |
-| 24 | Grid and qualifying position are almost the same number | correlation 0.97 | Keep the difference (`grid_penalty`). |
-| 25 | Drivers of the same race share a grid group | `circuit_grid_podium_rate` | Count per race first, then add up earlier races only. |
+| 22 | No qualifying data for many races | 620 of 1,114 races | `has_qualifying_data` = 0. |
+| 23 | Race has qualifying data but a driver has no row | 21 rows | `grid_penalty_places` = 0. |
+| 24 | Grid and qualifying position are almost the same number | correlation 0.97 | Keep the difference (`grid_penalty_places`). |
+| 25 | Drivers of the same race share a grid group | `circuit_podium_rate_for_grid_group` | Count per race first, then add up earlier races only. |
 | 26 | Circuit with few past races gives a noisy rate | under 5 earlier races | Use the rate over all circuits. |
 
 Primary keys (14 tables) and foreign keys (23 links) had no problems.
@@ -82,14 +82,14 @@ Primary keys (14 tables) and foreign keys (23 links) had no problems.
 
 | Group | Features |
 |-------|----------|
-| Grid | `grid`, `grid_pct`, `front_row` |
-| Qualifying | `grid_penalty`, `quali_gap_to_pole_pct`, `has_quali` |
-| Driver form | `drv_races_before`, `drv_podium_rate_last5`, `drv_avg_finish_last5`, `drv_dnf_rate_last10`, `drv_career_podium_rate`, `drv_circuit_podium_rate` |
-| Constructor form | `con_podium_rate_last5`, `con_avg_finish_last5`, `con_mech_dnf_rate_last10` |
-| Standings before the race | `drv_points_share_prev`, `drv_standing_pos_prev`, `drv_wins_prev`, `con_points_share_prev`, `con_standing_pos_prev` |
-| Context | `driver_age`, `home_race`, `season_progress`, `circuit_grid_podium_rate` |
+| Grid | `grid_position`, `grid_position_relative`, `front_row_start` |
+| Qualifying | `grid_penalty_places`, `qualifying_gap_to_pole_percent`, `has_qualifying_data` |
+| Driver form | `driver_races_before`, `driver_podium_rate_last_5_races`, `driver_average_finish_last_5_races`, `driver_retirement_rate_last_10_races`, `driver_career_podium_rate`, `driver_podium_rate_at_circuit` |
+| Constructor form | `constructor_podium_rate_last_5_races`, `constructor_average_finish_last_5_races`, `constructor_mechanical_retirement_rate_last_10_races` |
+| Standings before the race | `driver_points_share_before_race`, `driver_standing_position_before_race`, `driver_season_wins_before_race`, `constructor_points_share_before_race`, `constructor_standing_position_before_race` |
+| Context | `driver_age`, `home_race`, `season_progress`, `circuit_podium_rate_for_grid_group` |
 
-`circuit_grid_podium_rate` = in earlier races at this circuit, the share of drivers from this grid group (1–3, 4–6, 7–10, 11+) who reached the podium.
+`circuit_podium_rate_for_grid_group` = in earlier races at this circuit, the share of drivers from this grid group (1–3, 4–6, 7–10, 11+) who reached the podium.
 
 | Split | Rows | Podium rate |
 |-------|------|-------------|
@@ -101,13 +101,13 @@ Primary keys (14 tables) and foreign keys (23 links) had no problems.
 
 | Feature | Missing | Why |
 |---------|---------|-----|
-| `quali_gap_to_pole_pct` | 58.2% | No qualifying lap times for most races before 2003. |
-| `drv_circuit_podium_rate` | 30.3% | Driver's first race at this circuit. |
-| `drv_standing_pos_prev`, `con_standing_pos_prev` | 11.8% | Round 1, or no points yet. |
-| `con_points_share_prev` | 4.7% | Before 1958. |
-| Other `drv_` form columns | 2.8% | Driver's first race. |
-| `con_` form columns | 1.1% | Team's first race. |
-| `circuit_grid_podium_rate` | 0.1% | The very first race. |
+| `qualifying_gap_to_pole_percent` | 58.2% | No qualifying lap times for most races before 2003. |
+| `driver_podium_rate_at_circuit` | 30.3% | Driver's first race at this circuit. |
+| `driver_standing_position_before_race`, `constructor_standing_position_before_race` | 11.8% | Round 1, or no points yet. |
+| `constructor_points_share_before_race` | 4.7% | Before 1958. |
+| Other `driver_` form columns | 2.8% | Driver's first race. |
+| `constructor_` form columns | 1.1% | Team's first race. |
+| `circuit_podium_rate_for_grid_group` | 0.1% | The very first race. |
 
 ## 4. Limitations to report
 
