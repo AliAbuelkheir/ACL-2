@@ -1,7 +1,9 @@
-"""Build submission/report.pdf from the figures of the executed notebook.
+"""Build the report PDF from the figures of the executed notebook.
 
-Run from the repo root:  python docs/report/build_report.py
-The text is in report_content.py (team info at the top). Needs reportlab.
+Run from the repo root:  python docs/report/build_report.py v2   (or v1)
+v1: ms1_v1.ipynb + report_content.py -> report.pdf
+v2: ms1_v2.ipynb + report_content_v2.py -> report_v2.pdf
+Team info is at the top of the content file. Needs reportlab.
 """
 import base64
 import io
@@ -19,8 +21,11 @@ from reportlab.platypus import (Image, KeepTogether, PageBreak, Paragraph, Simpl
                                 TableStyle, ListFlowable, ListItem)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-nb_path = os.path.join(HERE, '..', '..', 'submission', 'f1-podium-prediction.ipynb')
-out_path = os.path.join(HERE, '..', '..', 'submission', 'report.pdf')
+version = sys.argv[1] if len(sys.argv) > 1 else 'v2'
+SUB = os.path.join(HERE, '..', '..', 'MS1', 'submission')
+nb_path = os.path.join(SUB, f'ms1_{version}.ipynb')
+content_file = 'report_content.py' if version == 'v1' else f'report_content_{version}.py'
+out_path = os.path.join(SUB, 'report.pdf' if version == 'v1' else f'report_{version}.pdf')
 with open(nb_path, encoding='utf-8') as f:
     cells = json.load(f)['cells']
 
@@ -102,7 +107,7 @@ def page_num(canvas, doc):
     canvas.restoreState()
 
 
-exec(open(os.path.join(HERE, 'report_content.py'), encoding='utf-8').read())   # the report text lives in its own file
+exec(open(os.path.join(HERE, content_file), encoding='utf-8').read())   # the report text lives in its own file
 
 doc = SimpleDocTemplate(out_path, pagesize=A4, leftMargin=2 * cm, rightMargin=2 * cm, topMargin=1.8 * cm,
                         bottomMargin=1.8 * cm, title='F1 Podium Prediction - Milestone 1 Report',

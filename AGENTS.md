@@ -25,6 +25,10 @@ The shortest code that a classmate understands on first read wins. If a one-line
 
 Build only what the current step needs: the direct call, with the default arguments, on the data we have.
 
+## Files
+
+Do not create any `.md` file unless the user asked for it or approved it. Otherwise answer in chat.
+
 ## Project context
 
 - Requirements: `docs/resources/MS1.pdf`
