@@ -163,7 +163,8 @@ table([
     ['Group', 'Features', 'Why it is known before the race'],
     ['Grid', 'grid_position, grid_position_relative (grid / field size), front_row_start', 'The starting grid is fixed before the start.'],
     ['Qualifying', 'grid_penalty_places (grid - qualifying position), qualifying_gap_to_pole_percent, has_qualifying_data',
-     'Qualifying is finished before the race. Grid and qualifying position correlate at 0.97, so only their difference is kept.'],
+     'Qualifying is finished before the race. Grid and qualifying position correlate at 0.97, so only their difference is kept. '
+     'has_qualifying_data is dropped before modeling: it is 1 on every row from 2003 (section 5).'],
     ['Driver form', 'driver_races_before, podium rate last 5, average finish last 5, retirement rate last 10, career podium rate, podium rate at this circuit',
      'Earlier races only (shift). Checked by hand on one driver.'],
     ['Constructor form', 'podium rate last 5, average finish last 5, mechanical-retirement rate last 10', 'Earlier races only, one row per team per race before shifting.'],
@@ -180,36 +181,50 @@ p('<b>Evidence for the choices.</b> The podium rate falls fast and non-linearly 
 p('<b>Leakage checks in the notebook:</b> the row count is unchanged after all merges, there are no duplicate keys, no post-race column is in the feature list, '
   'and one form value recomputed by hand matches the table.')
 fig("title='Podium rate by grid position')", 'Podium rate by grid position (all rows of the modeling table).', 0.62)
-fig("Podium rate by grid position (train)", 'The same on the training rows only, as checked before modeling.', 0.62)
+fig("Podium rate by grid position (train)", 'The same on the 1950-2019 training rows only, as checked before modeling.', 0.62)
 fig("Podium rate by driver podium rate in the last 5 races", 'Podium rate by the driver\'s podium rate in the previous 5 races (drivers with at least 5 earlier races).', 0.62)
 fig("title='Correlation of each feature with podium')", 'Leakage check: correlation of each feature with the target on all rows. None is close to +-1.', 0.55)
-fig("Correlation of each feature with podium (train)", 'Correlation of each feature with the target (training rows).', 0.55)
+fig("Correlation of each feature with podium (train)", 'Correlation of each feature with the target (1950-2019 training rows).', 0.55)
 p('The features overlap: four pairs correlate above 0.8 (grid_position and grid_position_relative 0.96, grid_position_relative and the '
   'circuit rate -0.81, driver and constructor podium rate 0.81, driver and constructor points share 0.81). This is why removing a '
   'single group costs little in the ablation (section 7).')
-fig("Correlation between features (train)", 'Correlation between the 24 features (training rows).', 0.75)
+fig("Correlation between features (train)", 'Correlation between the 24 features (1950-2019 training rows).', 0.75)
 
 h1('5. Split and pre-processing')
-p('<b>Split by season:</b> train 1950-2019 (22,444 rows, 13.5% podium), validation 2020-2021 (775 rows, 15.1%), test 2022-2024 (1,352 rows, 15.1%). '
+p('<b>Split by season:</b> train up to 2019, validation 2020-2021 (775 rows, 15.1% podium), test 2022-2024 (1,352 rows, 15.1%). '
   'The split is not random because at prediction time only the past is known, and form and standings features link neighbouring races. A random split would '
   'leak in both directions. year is used for the split only, never as a feature.')
-p('<b>Missing values</b> are filled with the <b>training median</b> (several features are skewed). The biggest case is the qualifying gap, missing in 14,284 '
-  'training rows (no lap times before 2003) but almost complete in validation and test. has_qualifying_data tells the model which races were filled. '
-  '<b>Scaling:</b> standardisation with the training mean and std, for logistic regression and the neural network. Trees get the filled, unscaled table. '
-  'Every model uses the same rows, the same 24 features and the same filled values. <b>Effect of scaling:</b> the ranges were very '
-  'different (driver_races_before goes up to a few hundred, the rates stay between 0 and 1). After scaling every feature has mean 0 '
-  'and std 1 on train, and the shape of each distribution is unchanged: only the axis moves.')
+p('<b>Which seasons to train on.</b> Before any model comparison we trained the logistic regression from three start years and compared PR-AUC on '
+  '<b>validation only</b> (the test set was not used for this choice):')
+table([
+    ['Train from', 'Train rows', 'Validation PR-AUC'],
+    ['1950 (all seasons)', '22,444', '0.746'],
+    ['1994 (first season with qualifying data)', '10,091', '0.752'],
+    ['<b>2003 (complete qualifying data)</b>', '<b>6,782</b>', '<b>0.749</b>'],
+], widths=[6.5 * cm, 3 * cm, 3.5 * cm])
+p('The three are within 0.006, inside the noise of about 0.01 (section 6), so the older seasons do not make the model better. <b>We train on 2003-2019</b> '
+  '(6,782 rows, 14.2% podium). When older seasons add no value, the recent ones make more sense: they were raced under rules much closer to the '
+  'validation and test years (points, qualifying format, reliability), the qualifying gap is a real value instead of a filled median, and it is the same rule '
+  'we use for models: among tied options, take the simpler one. The form and career features were built from the full history, so a 2003 row still knows '
+  'what a driver did before 2003. From 2003 every race has qualifying data, so has_qualifying_data is 1 on every row; a constant column says nothing '
+  '(and has std 0), so it is dropped. <b>The models use 23 features.</b>')
+p('<b>Missing values</b> are filled with the <b>training median</b> (several features are skewed). On the 1950-2019 rows the qualifying gap was missing in '
+  '14,284 rows; on the 2003-2019 rows it is missing in only 122. The largest gap left is the podium rate at the circuit (1,622 rows, a driver\'s first '
+  'race there). <b>Scaling:</b> standardisation with the training mean and std, for logistic regression and the neural network. Trees get the filled, '
+  'unscaled table. Medians, means and stds are learned on the 2003-2019 rows, and every model uses the same rows, features and filled values. '
+  '<b>Effect of scaling:</b> the ranges were very different (driver_races_before goes up to a few hundred, the rates stay between 0 and 1). After scaling '
+  'every feature has mean 0 and std 1 on train, and the shape of each distribution is unchanged: only the axis moves.')
 fig("Share of missing values in the modeling table", 'Share of missing values left in the saved modeling table, before filling.', 0.65)
-fig("after filling with the train median", 'Effect of median filling on the qualifying gap: the filled rows form a spike at the median.', 0.75)
+fig("after filling with the train median", 'Median filling of the qualifying gap on the 1950-2019 rows: 14,284 filled rows form a spike. This is why we train from 2003.', 0.75)
 p('<b>Pre-processing-order experiments</b> (logistic regression, PR-AUC):')
 table([
     ['Experiment', 'Our pipeline (val / test)', 'Alternative (val / test)', 'Finding'],
-    ['A. Split first vs fill and scale the whole table first', '0.7459 / 0.7233', '0.7459 / 0.7235',
-     'Same score: the medians barely move because val + test are 9% of rows. We still split first, the only leak-free order.'],
-    ['B. Fill then scale vs scale then fill', '0.7459 / 0.7233', '0.7461 / 0.7236',
-     'The std of the qualifying gap changes (1.57 vs 2.57), but a linear model absorbs the scale in its weight.'],
-    ['C. Missing flags before vs after filling', '0.7459 / 0.7233', '0.7446 / 0.7213',
-     'Flags after filling flag 0 cells, before filling 24,120. The flags do not help, so they are not used.'],
+    ['A. Split first vs fill and scale the whole table first', '0.7494 / 0.7253', '0.7500 / 0.7253',
+     'Same score: a median or mean is one number per feature and barely moves. We still split first, the only leak-free order.'],
+    ['B. Fill then scale vs scale then fill', '0.7494 / 0.7253', '0.7496 / 0.7256',
+     'The stds change a little (circuit podium rate 0.217 vs 0.236), and a linear model absorbs the scale in its weight.'],
+    ['C. Missing flags before vs after filling', '0.7494 / 0.7253', '0.7467 / 0.7233',
+     'Flags after filling flag 0 cells, before filling 2,227. The flags do not help, so they are not used.'],
 ], widths=[4.2 * cm, 2.6 * cm, 2.6 * cm, W - 9.4 * cm])
 
 h1('6. Models and metrics')
@@ -219,51 +234,53 @@ p('<b>Metrics:</b> ROC-AUC, PR-AUC, F1, precision and recall, for every model. <
   '<b>validation</b>. All hyperparameters were also chosen on validation. The test set was scored once, at the end.')
 bullets([
     '<b>Logistic regression (baseline model):</b> a weighted sum of the features squeezed into a probability. Each feature pushes the probability in one direction only, '
-    'and there are no interactions unless they are built by hand. Changing C (0.01-10) moved validation PR-AUC by less than 0.002, so the default C = 1 is kept. '
+    'and there are no interactions unless they are built by hand. Changing C (0.01-10) moved validation PR-AUC by less than 0.003, so the default C = 1 is kept. '
     '<i>Limits:</i> it keeps adding or subtracting for every extra unit, so outliers (a huge gap to pole) get extreme values.',
-    '<b>Random forest:</b> averages many decorrelated trees and handles curves and interactions. The default (fully grown trees) overfits (train PR-AUC 1.000, validation 0.685), so '
-    'max_depth = 5 (validation 0.732). <i>Limits:</i> deep trees memorise the training rows, and a forest cannot predict outside what it has seen.',
+    '<b>Random forest:</b> averages many decorrelated trees and handles curves and interactions. The default (fully grown trees) overfits (train PR-AUC 1.000, validation 0.657), so '
+    'max_depth = 5 (validation 0.724). <i>Limits:</i> deep trees memorise the training rows, and a forest cannot predict outside what it has seen.',
     '<b>Shallow neural network (Keras):</b> 2 hidden layers (32-16) with dropout 0.2. ReLU, sigmoid output, binary cross-entropy, Adam, '
-    'early stopping on validation loss (patience 10). Retraining with three other seeds moves validation PR-AUC between 0.744 and 0.751, so <b>differences under about 0.01 are noise</b>. <i>Limits:</i> the result depends on the random start, it needs scaled inputs, '
+    'early stopping on validation loss (patience 10). Retraining with three other seeds moves validation PR-AUC between 0.731 and 0.743, so <b>differences under about 0.01 are noise</b>. <i>Limits:</i> the result depends on the random start, it needs scaled inputs, '
     'and it is harder to explain than a list of weights.',
 ])
 table([
     ['', 'Validation', '', '', 'Test (unseen)', '', '', '', '', ''],
     ['Model', 'ROC<br/>AUC', 'PR<br/>AUC', 'F1', 'ROC<br/>AUC', 'PR<br/>AUC', 'F1', 'Precision', 'Recall', 'Threshold'],
-    ['<b>Logistic regression</b>', '0.931', '0.746', '0.713', '0.936', '<b>0.723</b>', '0.676', '0.551', '0.873', '0.233'],
-    ['Random forest', '0.932', '0.732', '0.716', '0.941', '0.719', '0.669', '0.566', '0.819', '0.272'],
-    ['Neural network (32-16)', '0.931', '0.751', '0.713', '0.937', '0.715', '0.676', '0.592', '0.789', '0.319'],
+    ['<b>Logistic regression</b>', '0.932', '<b>0.749</b>', '0.711', '0.937', '<b>0.725</b>', '0.684', '0.585', '0.824', '0.268'],
+    ['Random forest', '0.934', '0.724', '0.713', '0.940', '0.714', '0.689', '0.571', '0.868', '0.212'],
+    ['Neural network (32-16)', '0.927', '0.734', '0.706', '0.930', '0.710', '0.671', '0.648', '0.696', '0.420'],
 ], widths=[3.3 * cm] + [(W - 3.3 * cm) / 9] * 9, spans=[((1, 0), (3, 0)), ((4, 0), (8, 0))])
-p('Train PR-AUC: logistic regression 0.578, random forest 0.612, neural network 0.600. Validation and test scores are above train '
-  'for every model. This is not a bug: the training rows go back to 1950, when races were far less predictable, and the validation and test races are modern.', SMALL)
-p('<b>Result.</b> The three models are within the noise of each other. The non-grid features add real information: the same logistic regression on the '
-  'grid features alone reaches only 0.655 / 0.658 PR-AUC (validation / test, section 7). <b>Final model: logistic regression</b>, chosen on validation: it is tied with the best network (0.746 vs 0.751, inside the seed noise), and among tied models '
-  'we take the simplest. It is deterministic, trains in a second, and its weights can be read. The test column (PR-AUC 0.723, ROC-AUC 0.936) confirms the choice but did not make it. '
+p('Train PR-AUC: logistic regression 0.695, random forest 0.764, neural network 0.713. For the logistic regression and the network, validation and test are '
+  'above train: validation is small (775 rows) and 2020-2021 happened to be easier to predict than the 2003-2019 average. The forest fits the training rows '
+  'the closest but is the lowest on validation, so a little of its fit does not carry over.', SMALL)
+p('<b>Result.</b> The non-grid features add real information: the same logistic regression on the grid features alone reaches only 0.655 / 0.658 PR-AUC '
+  '(validation / test, section 7). <b>Final model: logistic regression</b>, chosen on validation: it has the highest validation PR-AUC (0.749 vs 0.734 for the '
+  'network and 0.724 for the forest). The gap to the network is about the size of the seed noise, and among tied models we take the simplest anyway. It is '
+  'deterministic, trains in a second, and its weights can be read. The test column (PR-AUC 0.725, ROC-AUC 0.937) confirms the choice but did not make it. '
   'The complex models did not earn their complexity because the hand-built features (form, standings, circuit rate) already capture the non-linear structure. At the '
-  'validation threshold of 0.23 the model finds 178 of the 204 test podiums (recall 0.87) with 145 false alarms (precision 0.55), about 5 candidates per race for 3 places.')
-fig("Loss per epoch, 2 hidden layers", 'Training and validation loss per epoch of the network (early stopping keeps the best epoch).', 0.6)
+  'validation threshold of 0.27 the model finds 168 of the 204 test podiums (recall 0.82) with 119 false alarms (precision 0.59), about 4 candidates per race for 3 places.')
+fig("Loss per epoch, 2 hidden layers", 'Training and validation loss per epoch of the network. The train loss keeps falling after about 7 epochs while the validation loss stays flat; early stopping keeps the best epoch.', 0.6)
 fig("PR-AUC per model and split", 'PR-AUC per model on train, validation and test.', 0.72)
 fig("ROC curve (test)", 'ROC and precision-recall curves on the unseen test set.', 0.95)
-fig("Logistic regression on the test set", 'Confusion matrix of the final model on the test set (threshold 0.23 from validation).', 0.45)
+fig("Logistic regression on the test set", 'Confusion matrix of the final model on the test set (threshold 0.27 from validation).', 0.45)
 
 h1('7. Experiments: feature-group ablation')
 p('One feature group is removed at a time and the logistic regression is retrained. '
   'Then the view is turned around: one group alone.')
 table([
     ['Group removed', 'Val drop', 'Test drop', 'Group alone: val / test PR-AUC'],
-    ['grid', '-0.011', '+0.022', '0.655 / 0.658'],
-    ['qualifying', '+0.004', '+0.001', '0.639 / 0.607'],
-    ['driver form', '+0.008', '-0.002', '0.653 / 0.519'],
-    ['constructor form', '-0.009', '+0.007', '0.534 / 0.509'],
-    ['standings', '+0.007', '+0.009', '0.661 / 0.562'],
-    ['context', '+0.013', '+0.000', '0.635 / 0.574'],
-    ['(all features)', '', '', '0.746 / 0.723'],
+    ['grid', '+0.006', '+0.019', '0.655 / 0.658'],
+    ['qualifying', '+0.010', '-0.000', '0.639 / 0.606'],
+    ['driver form', '+0.011', '-0.001', '0.646 / 0.541'],
+    ['constructor form', '-0.002', '+0.003', '0.530 / 0.515'],
+    ['standings', '-0.003', '+0.009', '0.651 / 0.557'],
+    ['context', '+0.015', '-0.000', '0.630 / 0.574'],
+    ['(all features)', '', '', '0.749 / 0.725'],
 ], widths=[3.6 * cm, 2.6 * cm, 2.6 * cm, W - 8.8 * cm])
-p('<b>No single group is essential:</b> every drop is at most about 0.02, and several are negative, all near the noise level of 0.01. The groups overlap '
-  '(driver and constructor form correlate at 0.81, and the circuit rate is built from the grid), so when one group is removed the others fill in. '
-  '<b>Every group alone is far below the full model</b>, so the gain comes from combining groups. Grid alone is the strongest and most stable group. '
-  'Standings and driver form alone look good on validation but fall on test. Further experiments: absolute vs relative grid makes no difference (within 0.003), '
-  'and training from 1994 (10,091 rows) scores the same as training from 1950 (validation 0.752 vs 0.746), so the old seasons do not help.')
+p('<b>No single group is essential:</b> every drop is below 0.02, and several are slightly negative, most of them near the noise level of 0.01. Grid is the only '
+  'group that costs something on both validation and test. The groups overlap (driver and constructor form correlate at 0.81, and the circuit rate is built '
+  'from the grid), so when one group is removed the others fill in. <b>Every group alone is far below the full model</b>, so the gain comes from combining '
+  'groups. Grid alone is the strongest and most stable group. Standings and driver form alone are close to grid on validation but fall on test. '
+  'Further experiment: absolute vs relative grid makes no difference (within 0.0005). The choice of training seasons is in section 5.')
 fig("Drop in PR-AUC when one feature group is removed", 'Drop in PR-AUC when one feature group is removed (right = the group helped).', 0.7)
 fig("PR-AUC with one feature group alone", 'PR-AUC with one feature group alone, against all features.', 0.7)
 
@@ -271,35 +288,41 @@ h1('8. Explainability')
 p('<b>Important: these explanations show what the model relies on. They are not causal effects.</b> A feature being important does not prove that it causes '
   'podium finishes. For example, the model leans on grid position, but a slow car moved to pole by hand would not become a podium car.')
 h2('8.1 Global: permutation importance and SHAP')
-p('<b>Permutation importance</b> (validation, PR-AUC, 10 shuffles): grid_position stands far above everything else (shuffling it costs about 0.17 PR-AUC). Then come '
-  'driver_career_podium_rate, circuit_podium_rate_for_grid_group and qualifying_gap_to_pole_percent at about 0.02 each. Most other features are near zero. '
-  'A zero does not mean useless: when two features carry the same information, shuffling one leaves the other to do the job.')
+p('<b>Permutation importance</b> (validation, PR-AUC, 10 shuffles): no single feature dominates. driver_races_before costs the most when shuffled (about 0.06 PR-AUC), '
+  'then circuit_podium_rate_for_grid_group (about 0.045), and driver_career_podium_rate and grid_position (about 0.027 each). The spread over the shuffles is wide '
+  'and the bottom half of the features is near zero. A zero does not mean useless: when features carry the same information, shuffling one leaves the others to do '
+  'the job. The grid information is spread over four columns (grid_position, grid_position_relative, front_row_start and the circuit rate per grid group), so '
+  'together the grid is still the strongest signal, as the ablation showed.')
 fig("perm_table['drop in PR-AUC'].plot", 'Permutation importance of the final model on the validation set.', 0.55)
-p('<b>SHAP</b> (LinearExplainer, in log-odds) agrees on the top features. In the beeswarm, a high grid number (red) pushes the prediction down and a front start (blue) pushes it up. '
-  'A few drivers with a huge gap to pole get extreme negative values, because a linear model keeps subtracting for every extra percent: this is a limit of the model. '
-  'A positive grid_penalty_places pushes up: a driver who starts further back than qualified is faster than the grid slot suggests. '
-  'has_qualifying_data ranks high in SHAP but is zero in permutation importance. Every validation race has qualifying data, so it shifts every row by the same amount and '
-  'cannot change the order. SHAP measures the distance from the training average, while permutation importance measures what the ranking needs.')
+p('<b>SHAP</b> (LinearExplainer, in log-odds). In the beeswarm, a high grid number (red) pushes the prediction down and a front start (blue) pushes it up. '
+  'driver_age and driver_races_before point in opposite directions: young drivers and drivers with many races are pushed up. The two move together (older drivers '
+  'have more races), so the model uses them as a pair: many races for one\'s age means a top driver who reached F1 early. Read one by one they look strange, which is '
+  'a limit of reading correlated features. A high circuit rate for the grid group pushes up. A few drivers with a huge gap to pole get extreme negative values, '
+  'because a linear model keeps subtracting for every extra percent: this is a limit of the model.')
 fig("shap.plots.beeswarm(shap_values", 'SHAP beeswarm: each dot is one validation row (red = high feature value).', 0.7)
 h2('8.2 Local: one prediction (LIME)')
-p('The row is the pole sitter of the last race of 2021 (round 22). The model gives 0.85, and the driver did finish on the podium. LIME makes many small random '
-  'changes to the row, asks the model for each, and fits a small linear model around it. The grid position is the longest green bar, then the gap to pole, the '
-  'circuit rate and the career podium rate: the same features that lead the global explanations. The conditions are in scaled units because the model works on '
-  'the scaled table (grid_position &lt;= -0.87 means a start near the front). This explains why the model said 0.85. It does not say these features caused the podium.')
+p('The row is the pole sitter of the last race of 2021 (round 22). The model gives 0.96, and the driver did finish on the podium. LIME makes many small random '
+  'changes to the row, asks the model for each, and fits a small linear model around it. The longest green bars are the circuit rate for this grid group, the '
+  'grid position, the driver\'s age and the constructor\'s points share: the same kind of features that lead the global explanations. Two small red bars (no grid '
+  'penalty, and the driver points share) pull the other way. The conditions are in scaled units because the model works on the scaled table '
+  '(grid_position &lt;= -0.83 means a start near the front). This explains why the model said 0.96. It does not say these features caused the podium.')
 fig("lime_exp.as_pyplot_figure()", 'LIME explanation of the same prediction (green pushes towards podium).', 0.6)
 
 h1('9. Inference function')
 p('predict_podium(record) takes the pre-race features of one driver in one race as a dict. It repeats the training pipeline with values learned on training rows only: '
   'it fills missing features with the training medians, scales with the training mean and std, predicts with the logistic regression, and compares with the validation '
-  'threshold. A feature absent from the record is treated as missing. On a complete test record it returns (0.358, podium). With three values removed (qualifying gap, '
-  'podium rate at the circuit, standing position) it returns (0.276, podium). The prediction still works, but it is less reliable, because a typical value replaced '
-  'the driver\'s real circuit podium rate of 1.0.')
+  'threshold. A feature absent from the record is treated as missing. On a complete test record (round 2 of 2022) it returns (0.272, podium). With three values '
+  'removed (qualifying gap, podium rate at the circuit, standing position) it returns (0.38, podium). The prediction still works, but it is less reliable: the real '
+  'standing was 19th after no points in round 1, and the typical value that replaced it is much better, which pushes the probability up.')
 
 h1('10. Known limitations')
 bullets([
-    '<b>Qualifying-coverage drift:</b> qualifying lap times are missing for most races before 2003 (58% of all rows for the gap feature). The qualifying features '
-    'are mostly filled values in training but complete in validation and test.',
-    '<b>Era sensitivity:</b> most training rows come from a different kind of F1 (bigger fields, lower reliability, other points systems). Training from 1994 scores the same with less than half the rows.',
+    '<b>Qualifying-coverage drift:</b> qualifying lap times are missing for most races before 2003 (58% of all rows for the gap feature). Training from 2003 '
+    'removes this from the model: the gap is now missing in only 122 training rows. The older seasons are only used through the form and career features.',
+    '<b>Era sensitivity:</b> 2003-2019 still spans several rule eras (refuelling, V8, hybrid). Training from 1950 or 1994 scores the same on validation, so the '
+    'model would likely not change much with other windows, but the choice rests on a small validation set.',
+    '<b>Correlated features:</b> driver_age and driver_races_before (and the four grid columns) carry overlapping information, so their weights and importances '
+    'are hard to read one by one.',
     '<b>Small validation set:</b> 775 rows and 117 podiums, so differences under about 0.01 PR-AUC (the seed noise of the network) cannot be separated.',
     '<b>Team renames reset history:</b> constructor form follows constructorId, so a renamed team starts with no history.',
     '<b>Shared drives:</b> the kept duplicate row can carry the grid slot of the car the driver took over.',
