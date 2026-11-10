@@ -6,7 +6,7 @@ F1 podium prediction, a university milestone. Every team member must be able to 
 
 All code goes in Jupyter notebook cells (`.ipynb`). The notebook must run top to bottom with Run All.
 
-Read from `data/raw`, which stays read-only. Save cleaned copies elsewhere.
+Read from `MS1/data/raw`, which stays read-only. Save cleaned copies elsewhere.
 
 ## Junior developer style
 
@@ -31,7 +31,7 @@ Do not create any `.md` file unless the user asked for it or approved it. Otherw
 
 ## Project context
 
-- Requirements: `docs/resources/MS1.pdf`
-- What each table is and how they link: `docs/dataset-tables.md`
-- Cleaning musts and the modeling table: `docs/cleaning-and-modeling-table.md`
+- Requirements: `MS1/docs/resources/MS1.pdf`
+- What each table is and how they link: `MS1/docs/dataset-tables.md`
+- Cleaning musts and the modeling table: `MS1/docs/cleaning-and-modeling-table.md`
 - Features must be known before the race starts. Read the leakage rules in the modeling-table doc before any feature work.
